@@ -58,6 +58,7 @@ alphabetically by `name`.
       "version":     "1.0.0",
       "author":      "KRK",
       "description": "Atom's iconic One Dark Pro theme.",
+      "type":        "extension",
       "category":    "theme",
       "downloadUrl": "…/extensions/one-dark-pro/extension.zip",
       "iconUrl":     "…/extensions/one-dark-pro/icon.png",

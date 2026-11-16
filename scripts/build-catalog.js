@@ -36,19 +36,55 @@ const BASE_URL = process.env.CATALOG_BASE_URL ||
 const ROOT = path.resolve(__dirname, '..');
 const EXT_DIR = path.join(ROOT, 'extensions');
 
-function readManifestFromZip(zipPath) {
+function readZipEntry(zipPath, entryName) {
     try {
-        // Try tar -xf first (available on Windows 10/11, macOS, Linux)
-        const out = execSync(`tar -xf "${zipPath}" -O manifest.json`, { encoding: 'utf8' });
-        return JSON.parse(out);
+        return execSync(`tar -xf "${zipPath}" -O "${entryName}"`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] });
     } catch (_) {
         try {
-            const out = execSync(`unzip -p "${zipPath}" manifest.json`, { encoding: 'utf8' });
-            return JSON.parse(out);
-        } catch (e) {
-            throw new Error(`Cannot read manifest.json from ${zipPath}: ${e.message}`);
+            return execSync(`unzip -p "${zipPath}" "${entryName}"`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] });
+        } catch (__) {
+            return null;
         }
     }
+}
+
+function parseFrontmatter(md) {
+    const lines = md.split(/\r?\n/);
+    if (!lines.length || lines[0].trim() !== '---') return {};
+    const end = lines.slice(1).findIndex(l => l.trim() === '---');
+    if (end < 0) return {};
+    const out = {};
+    for (let i = 1; i <= end; i++) {
+        const line = lines[i];
+        const idx = line.indexOf(':');
+        if (idx > 0 && !line.startsWith(' ') && !line.startsWith('\t')) {
+            const k = line.slice(0, idx).trim().toLowerCase();
+            const v = line.slice(idx + 1).trim().replace(/^["']|["']$/g, '');
+            if (v) out[k] = v;
+        }
+    }
+    return out;
+}
+
+function readManifestFromZip(zipPath, slug) {
+    const raw = readZipEntry(zipPath, 'manifest.json');
+    if (raw) {
+        return JSON.parse(raw);
+    }
+    const skillMd = readZipEntry(zipPath, 'SKILL.md');
+    if (skillMd) {
+        const fm = parseFrontmatter(skillMd);
+        return {
+            id: slug,
+            name: fm.name || slug,
+            version: '1.0.0',
+            author: 'KRK',
+            description: fm.description || `AI Skill pack (${slug})`,
+            type: 'skill',
+            category: 'skill'
+        };
+    }
+    throw new Error(`Cannot read manifest.json or SKILL.md from ${zipPath}`);
 }
 
 function sha256(filePath) {
@@ -56,12 +92,19 @@ function sha256(filePath) {
     return crypto.createHash('sha256').update(buf).digest('hex');
 }
 
+const KNOWN_THEME_IDS = new Set(['dracula', 'github-dark', 'monokai', 'nord', 'one-dark-pro']);
+
 function categoryFromManifest(m) {
-    // Trivial heuristic: id "<noun>-language" => language, ends in "theme" => theme.
+    if (typeof m.category === 'string' && m.category.trim()) {
+        return m.category.trim().toLowerCase();
+    }
+    if ((m.type || '').toLowerCase() === 'skill') return 'skill';
     const id = (m.id || '').toLowerCase();
     if (id.endsWith('-language') || id.endsWith('-syntax')) return 'language';
-    if (id.includes('theme') || id.includes('-pro')) return 'theme';
-    if (id.startsWith('ai-')) return 'ai';
+    if (id.includes('theme') || id.endsWith('-pro') || KNOWN_THEME_IDS.has(id)) return 'theme';
+    if (id.startsWith('ai-') || (Array.isArray(m.permissions) && m.permissions.some(p => String(p).startsWith('ai.')))) {
+        return 'ai';
+    }
     return 'tool';
 }
 
@@ -81,19 +124,21 @@ for (const slug of fs.readdirSync(EXT_DIR)) {
         continue;
     }
 
-    const manifest = readManifestFromZip(zipPath);
+    const manifest = readManifestFromZip(zipPath, slug);
     const stat = fs.statSync(zipPath);
 
     const iconPath = ['icon.png', 'icon.jpg', 'icon.svg']
         .map(n => path.join(dir, n)).find(fs.existsSync);
 
+    const category = categoryFromManifest(manifest);
     entries.push({
         id:          manifest.id,
         name:        manifest.name        || manifest.id,
         version:     manifest.version     || '1.0.0',
         author:      manifest.author      || '',
         description: manifest.description || '',
-        category:    categoryFromManifest(manifest),
+        type:        manifest.type        || (category === 'skill' ? 'skill' : 'extension'),
+        category,
         downloadUrl: `${BASE_URL}/extensions/${slug}/extension.zip`,
         iconUrl:     iconPath ? `${BASE_URL}/extensions/${slug}/${path.basename(iconPath)}` : null,
         readmeUrl:   fs.existsSync(path.join(dir, 'README.md'))
