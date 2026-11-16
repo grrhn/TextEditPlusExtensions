@@ -108,6 +108,46 @@ function categoryFromManifest(m) {
     return 'tool';
 }
 
+const IMAGE_EXT_RE = /\.(png|jpe?g|webp)$/i;
+
+function collectScreenshots(dir, slug, manifest) {
+    const urls = [];
+    const seen = new Set();
+    const pushUrl = (u) => {
+        if (u && !seen.has(u)) {
+            seen.add(u);
+            urls.push(u);
+        }
+    };
+
+    const shotsDir = path.join(dir, 'screenshots');
+    if (fs.existsSync(shotsDir) && fs.statSync(shotsDir).isDirectory()) {
+        for (const f of fs.readdirSync(shotsDir).sort()) {
+            if (IMAGE_EXT_RE.test(f)) {
+                pushUrl(`${BASE_URL}/extensions/${slug}/screenshots/${f}`);
+            }
+        }
+    }
+
+    for (const f of fs.readdirSync(dir).sort()) {
+        if (/^(screenshot|preview).*\.(png|jpe?g|webp)$/i.test(f)) {
+            pushUrl(`${BASE_URL}/extensions/${slug}/${f}`);
+        }
+    }
+
+    if (Array.isArray(manifest.screenshots)) {
+        for (const item of manifest.screenshots) {
+            if (typeof item !== 'string' || !item.trim()) continue;
+            const trimmed = item.trim();
+            const full = /^https?:\/\//i.test(trimmed)
+                ? trimmed
+                : `${BASE_URL}/extensions/${slug}/${trimmed.replace(/^\.?\//, '')}`;
+            pushUrl(full);
+        }
+    }
+    return urls;
+}
+
 const entries = [];
 if (!fs.existsSync(EXT_DIR)) {
     console.error(`Missing ${EXT_DIR} — create it and drop one folder per extension.`);
@@ -131,6 +171,10 @@ for (const slug of fs.readdirSync(EXT_DIR)) {
         .map(n => path.join(dir, n)).find(fs.existsSync);
 
     const category = categoryFromManifest(manifest);
+    const screenshots = collectScreenshots(dir, slug, manifest);
+    const permissions = Array.isArray(manifest.permissions)
+        ? manifest.permissions.map(p => String(p).trim()).filter(Boolean)
+        : [];
     entries.push({
         id:          manifest.id,
         name:        manifest.name        || manifest.id,
@@ -143,6 +187,8 @@ for (const slug of fs.readdirSync(EXT_DIR)) {
         iconUrl:     iconPath ? `${BASE_URL}/extensions/${slug}/${path.basename(iconPath)}` : null,
         readmeUrl:   fs.existsSync(path.join(dir, 'README.md'))
                        ? `${BASE_URL}/extensions/${slug}/README.md` : null,
+        screenshots,
+        permissions,
         sizeBytes:   stat.size,
         sha256:      sha256(zipPath),
         premium:     manifest.premium === true,

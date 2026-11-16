@@ -12,8 +12,10 @@ extension-catalog/
 ├── extensions/
 │   ├── one-dark-pro/
 │   │   ├── extension.zip
-│   │   ├── icon.png      (optional)
-│   │   └── README.md     (optional)
+│   │   ├── icon.png         (optional)
+│   │   ├── README.md        (optional)
+│   │   └── screenshots/     (optional PNG/JPG/WEBP previews)
+│   │       └── preview.png
 │   ├── toml-language/
 │   └── …
 └── scripts/
@@ -63,6 +65,8 @@ alphabetically by `name`.
       "downloadUrl": "…/extensions/one-dark-pro/extension.zip",
       "iconUrl":     "…/extensions/one-dark-pro/icon.png",
       "readmeUrl":   "…/extensions/one-dark-pro/README.md",
+      "screenshots": ["…/extensions/one-dark-pro/screenshots/preview.png"],
+      "permissions": [],
       "sizeBytes":   937,
       "sha256":      "abc123…",
       "premium":     false,
